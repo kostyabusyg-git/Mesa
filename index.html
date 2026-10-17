@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+<title>Чат</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0e1621;
+  }
+
+  /* Жёсткая фиксация приложения на весь экран */
+  #app {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    max-width: 480px;
+    margin: 0 auto;
+    background: #17212b;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 0 40px rgba(0,0,0,0.5);
+  }
+  @media (min-width: 481px) {
+    #app {
+      top: 20px;
+      bottom: 20px;
+      border-radius: 12px;
+    }
+  }
+
+  /* Шапка */
+  #header {
+    padding: 14px 18px;
+    background: #1c2733;
+    border-bottom: 1px solid #101921;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    z-index: 2;
+  }
+  #header .avatar {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent, #2aabee), #229ed9);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; color: white; font-weight: 600;
+    flex-shrink: 0;
+  }
+  #header .info { color: #f5f5f5; flex: 1; min-width: 0; }
+  #header .info .name { font-weight: 600; font-size: 15px; }
+  #header .info .status { font-size: 12px; color: #7d8b99; word-break: break-word; }
+  #header .icon-btn {
+    background: none; border: none; color: #7d8b99; font-size: 20px;
+    cursor: pointer; padding: 6px; border-radius: 8px;
+    transition: background 0.2s, color 0.2s;
+    flex-shrink: 0;
+  }
+  #header .icon-btn:hover { background: #242f3d; color: #fff; }
+
+  /* Единственный скроллящийся блок */
+  #messages {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    position: relative;
+    z-index: 1;
+  }
+  #messages::-webkit-scrollbar { width: 4px; }
+  #messages::-webkit-scrollbar-thumb { background: #2b3a4a; border-radius: 4px; }
+
+  .msg {
+    max-width: 80%;
+    padding: 8px 12px;
+    border-radius: 12px;
+    font-size: 14px;
+    line-height: 1.4;
+    word-break: break-word;
+    flex-shrink: 0;
+    animation: slideIn 0.3s cubic-bezier(0.21, 1.02, 0.73, 1) forwards;
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  @keyframes slideIn { to { opacity: 1; transform: translateY(0); } }
+  .msg.self {
+    align-self: flex-end;
+    background: var(--accent, #2b5278);
+    color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+  .msg.other {
+    align-self: flex-start;
+    background: #182533;
+    color: #e1e1e1;
+    border-bottom-left-radius: 4px;
+  }
+  .msg .name { font-size: 11px; font-weight: 600; color: #6ab3f3; margin-bottom: 2px; }
+  .msg .time { font-size: 10px; color: #7d8b99; float: right; margin-left: 8px; margin-top: 4px; }
+  .msg img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    margin-top: 6px;
+    display: block;
+    cursor: pointer;
+  }
+
+  /* Панель ввода — всегда внизу, никогда не сжимается */
+  #input-area {
+    padding: 12px 16px;
+    background: #1c2733;
+    border-top: 1px solid #101921;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-shrink: 0;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    z-index: 2;
+  }
+  #attach {
+    width: 38px; height: 38px;
+    border: none; border-radius: 50%;
+    background: #242f3d; color: #a0b0c0; font-size: 18px;
+    cursor: pointer; flex-shrink: 0;
+    transition: background 0.2s, transform 0.15s;
+  }
+  #attach:hover { background: #2b3a4a; }
+  #attach:active { transform: scale(0.92); }
+  #attach:disabled { opacity: 0.5; cursor: not-allowed; }
+  #input {
+    flex: 1;
+    padding: 10px 16px;
+    border: none; border-radius: 20px;
+    background: #242f3d; color: #f5f5f5; font-size: 14px;
+    outline: none; transition: background 0.2s;
+    min-width: 0;
+  }
+  #input:focus { background: #2b3a4a; }
+  #input::placeholder { color: #6c7883; }
+  #send {
+    width: 42px; height: 42px;
+    border: none; border-radius: 50%;
+    background: var(--accent, #2aabee); color: white; font-size: 18px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: transform 0.15s, background 0.2s;
+    flex-shrink: 0;
+  }
+  #send:hover { filter: brightness(1.1); }
+  #send:active { transform: scale(0.92); }
+  #send:disabled { background: #3a4a5a; cursor: not-allowed; }
+
+  /* Экран входа */
+  #login-screen {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    padding: 30px;
+    overflow-y: auto;
+  }
+  #login-screen .logo {
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent, #2aabee), #229ed9);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 36px;
+    flex-shrink: 0;
+  }
+  #login-screen h2 { color: #f5f5f5; font-weight: 500; font-size: 20px; }
+  #login-screen input {
+    width: 100%; max-width: 280px;
+    padding: 12px 18px;
+    border: 1px solid #2b3a4a; border-radius: 24px;
+    background: #242f3d; color: #f5f5f5; font-size: 15px;
+    outline: none; text-align: center;
+    transition: border-color 0.2s;
+  }
+  #login-screen input:focus { border-color: var(--accent, #2aabee); }
+  #login-screen button {
+    padding: 12px 40px;
+    border: none; border-radius: 24px;
+    background: var(--accent, #2aabee); color: white;
+    font-size: 15px; font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.15s;
+  }
+  #login-screen button:hover { filter: brightness(1.1); }
+  #login-screen button:active { transform: scale(0.96); }
+
+  .hidden { display: none !important; }
+
+  /* Настройки */
+  #settings-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex; justify-content: center; align-items: center;
+    z-index: 100;
+    animation: fadeIn 0.2s;
+  }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  #settings-panel {
+    background: #1c2733; border-radius: 16px; padding: 24px;
+    width: 90%; max-width: 360px; color: #f5f5f5;
+    animation: popIn 0.25s cubic-bezier(0.21, 1.02, 0.73, 1);
+  }
+  @keyframes popIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  #settings-panel h3 { margin-bottom: 16px; font-weight: 600; }
+  .setting-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 0; border-bottom: 1px solid #2b3a4a;
+  }
+  .setting-row:last-of-type { border-bottom: none; }
+  .setting-row label { font-size: 14px; }
+  .toggle {
+    width: 46px; height: 26px; border-radius: 13px;
+    background: #3a4a5a; border: none; cursor: pointer;
+    position: relative; transition: background 0.2s;
+  }
+  .toggle.on { background: var(--accent, #2aabee); }
+  .toggle::after {
+    content: ''; position: absolute; top: 3px; left: 3px;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: #fff; transition: transform 0.2s;
+  }
+  .toggle.on::after { transform: translateX(20px); }
+  .colors { display: flex; gap: 8px; }
+  .colors button {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: transform 0.15s, border-color 0.2s;
+  }
+  .colors button:hover { transform: scale(1.1); }
+  .colors button.active { border-color: #fff; }
+  #settings-close {
+    margin-top: 20px; width: 100%; padding: 12px;
+    border: none; border-radius: 12px; background: #242f3d;
+    color: #f5f5f5; font-size: 14px; cursor: pointer;
+    transition: background 0.2s;
+  }
+  #settings-close:hover { background: #2b3a4a; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="login-screen">
+    <div class="logo">💬</div>
+    <h2>Добро пожаловать</h2>
+    <input type="text" id="name-input" placeholder="Введите ваше имя" maxlength="20">
+    <button id="enter-btn">Войти</button>
+  </div>
+
+  <div id="chat-screen" class="hidden" style="display:flex; flex-direction:column; flex:1 1 0; min-height:0;">
+    <div id="header">
+      <div class="avatar" id="user-avatar">?</div>
+      <div class="info">
+        <div class="name">Общий чат</div>
+        <div class="status" id="status">Подключение...</div>
+      </div>
+      <button class="icon-btn" id="settings-btn" title="Настройки">⚙️</button>
+    </div>
+    <div id="messages"></div>
+    <div id="input-area">
+      <button id="attach" title="Отправить фото">📎</button>
+      <input type="file" id="file-input" accept="image/*" hidden>
+      <input type="text" id="input" placeholder="Написать сообщение..." disabled>
+      <button id="send" disabled>➤</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  const SUPABASE_URL = 'https://ekqnbtjjqatvwsxlzenr.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_AK4tP549G2IjTkSOeNvC4g_Z2ViaGc_';
+
+  import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const loginScreen = document.getElementById('login-screen');
+  const chatScreen = document.getElementById('chat-screen');
+  const nameInput = document.getElementById('name-input');
+  const enterBtn = document.getElementById('enter-btn');
+  const messagesEl = document.getElementById('messages');
+  const inputEl = document.getElementById('input');
+  const sendBtn = document.getElementById('send');
+  const statusEl = document.getElementById('status');
+  const avatarEl = document.getElementById('user-avatar');
+  const settingsBtn = document.getElementById('settings-btn');
+  const attachBtn = document.getElementById('attach');
+  const fileInput = document.getElementById('file-input');
+
+  let myName = '';
+  let channel = null;
+  let isSending = false;
+  const renderedIds = new Set();
+
+  const settings = {
+    sound: localStorage.getItem('chat_sound') !== 'off',
+    accent: localStorage.getItem('chat_accent') || '#2aabee'
+  };
+  document.documentElement.style.setProperty('--accent', settings.accent);
+
+  let audioCtx = null;
+  function playPing() {
+    if (!settings.sound) return;
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(660, audioCtx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.15, audioCtx.currentTime + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.3);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.3);
+    } catch (e) { console.warn('Звук:', e); }
+  }
+
+  enterBtn.addEventListener('click', enterChat);
+  nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') enterChat(); });
+
+  function enterChat() {
+    const name = nameInput.value.trim();
+    if (!name) { nameInput.focus(); return; }
+    myName = name;
+    loginScreen.classList.add('hidden');
+    chatScreen.classList.remove('hidden');
+    avatarEl.textContent = name.charAt(0).toUpperCase();
+    initChat();
+  }
+
+  async function initChat() {
+    statusEl.textContent = 'Загрузка истории...';
+
+    try {
+      const { data: history, error } = await supabase
+        .from('messages').select('*')
+        .order('created_at', { ascending: true }).limit(100);
+
+      if (error) {
+        console.error('История:', error);
+        statusEl.textContent = 'История: ' + error.message;
+      } else if (history) {
+        history.forEach(m => {
+          if (!renderedIds.has(m.id)) {
+            renderedIds.add(m.id);
+            addMessage(m.user_name, m.text, m.user_name === myName, m.created_at, m.image_url);
+          }
+        });
+      }
+    } catch (e) {
+      statusEl.textContent = 'Сеть: ' + e.message;
+    }
+
+    channel = supabase
+      .channel('chat-room')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+        const m = payload.new;
+        if (renderedIds.has(m.id)) return;
+        renderedIds.add(m.id);
+        addMessage(m.user_name, m.text, m.user_name === myName, m.created_at, m.image_url);
+        if (m.user_name !== myName) playPing();
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          statusEl.textContent = `Вы: ${myName}`;
+          inputEl.disabled = false;
+          sendBtn.disabled = false;
+          inputEl.focus();
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          statusEl.textContent = 'Переподключение...';
+        }
+      });
+
+    sendBtn.addEventListener('click', () => sendMessage());
+    inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    });
+  }
+
+  async function sendMessage() {
+    const text = inputEl.value.trim();
+    if (!text || isSending) return;
+    isSending = true;
+    sendBtn.disabled = true;
+    inputEl.value = '';
+
+    try {
+      const { error } = await supabase
+        .from('messages')
+        .insert({ user_name: myName, text: text, image_url: null });
+      if (error) {
+        console.error('Отправка:', error);
+        statusEl.textContent = 'Отправка: ' + error.message;
+        inputEl.value = text;
+      }
+    } catch (e) {
+      statusEl.textContent = 'Сеть: ' + e.message;
+      inputEl.value = text;
+    } finally {
+      isSending = false;
+      sendBtn.disabled = false;
+      inputEl.focus();
+    }
+  }
+
+  attachBtn.addEventListener('click', () => {
+    if (!isSending) fileInput.click();
+  });
+
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files[0];
+    fileInput.value = '';
+    if (!file || isSending) return;
+
+    if (!file.type.startsWith('image/')) {
+      statusEl.textContent = 'Фото: это не изображение';
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      statusEl.textContent = 'Фото: файл больше 5 МБ';
+      return;
+    }
+
+    isSending = true;
+    sendBtn.disabled = true;
+    attachBtn.disabled = true;
+    statusEl.textContent = 'Фото: загрузка...';
+
+    try {
+      const ext = file.name.split('.').pop() || 'jpg';
+      const path = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('chat-images')
+        .upload(path, file, {
+          contentType: file.type || 'image/jpeg',
+          upsert: false,
+          cacheControl: '3600'
+        });
+
+      if (uploadError) {
+        statusEl.textContent = 'Фото: ' + (uploadError.message || JSON.stringify(uploadError));
+        return;
+      }
+
+      statusEl.textContent = 'Фото: отправка...';
+
+      const { data: urlData } = supabase.storage
+        .from('chat-images')
+        .getPublicUrl(path);
+
+      if (!urlData || !urlData.publicUrl) {
+        statusEl.textContent = 'Фото: не удалось получить URL';
+        return;
+      }
+
+      const { error: insertError } = await supabase
+        .from('messages')
+        .insert({ user_name: myName, text: '', image_url: urlData.publicUrl });
+
+      if (insertError) {
+        statusEl.textContent = 'Фото: ' + (insertError.message || JSON.stringify(insertError));
+      } else {
+        statusEl.textContent = `Вы: ${myName}`;
+      }
+    } catch (e) {
+      statusEl.textContent = 'Фото: ' + (e.message || String(e));
+    } finally {
+      isSending = false;
+      sendBtn.disabled = false;
+      attachBtn.disabled = false;
+      inputEl.focus();
+    }
+  });
+
+  function addMessage(name, text, isSelf, createdAt, imageUrl) {
+    const div = document.createElement('div');
+    div.className = 'msg ' + (isSelf ? 'self' : 'other');
+
+    const time = createdAt
+      ? new Date(createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+      : new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+
+    const nameHtml = !isSelf ? `<div class="name">${escapeHtml(name)}</div>` : '';
+    const textHtml = text ? escapeHtml(text) : '';
+    const imgHtml = imageUrl
+      ? `<img src="${escapeHtml(imageUrl)}" alt="фото" loading="lazy">`
+      : '';
+
+    div.innerHTML = `${nameHtml}${textHtml}${imgHtml}<span class="time">${time}</span>`;
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[m]);
+  }
+
+  let settingsOverlay = null;
+  settingsBtn.addEventListener('click', openSettings);
+
+  function openSettings() {
+    if (settingsOverlay) return;
+    settingsOverlay = document.createElement('div');
+    settingsOverlay.id = 'settings-overlay';
+    settingsOverlay.innerHTML = `
+      <div id="settings-panel">
+        <h3>⚙️ Настройки</h3>
+        <div class="setting-row">
+          <label>Звук уведомлений</label>
+          <button class="toggle ${settings.sound ? 'on' : ''}" id="toggle-sound"></button>
+        </div>
+        <div class="setting-row">
+          <label>Цвет акцента</label>
+          <div class="colors">
+            <button style="background:#2aabee" data-color="#2aabee" class="${settings.accent === '#2aabee' ? 'active' : ''}"></button>
+            <button style="background:#e74c3c" data-color="#e74c3c" class="${settings.accent === '#e74c3c' ? 'active' : ''}"></button>
+            <button style="background:#2ecc71" data-color="#2ecc71" class="${settings.accent === '#2ecc71' ? 'active' : ''}"></button>
+            <button style="background:#9b59b6" data-color="#9b59b6" class="${settings.accent === '#9b59b6' ? 'active' : ''}"></button>
+            <button style="background:#f39c12" data-color="#f39c12" class="${settings.accent === '#f39c12' ? 'active' : ''}"></button>
+          </div>
+        </div>
+        <button id="settings-close">Закрыть</button>
+      </div>
+    `;
+    document.body.appendChild(settingsOverlay);
+
+    settingsOverlay.addEventListener('click', (e) => {
+      if (e.target === settingsOverlay) closeSettings();
+    });
+    document.getElementById('settings-close').addEventListener('click', closeSettings);
+
+    document.getElementById('toggle-sound').addEventListener('click', (e) => {
+      settings.sound = !settings.sound;
+      localStorage.setItem('chat_sound', settings.sound ? 'on' : 'off');
+      e.target.classList.toggle('on', settings.sound);
+      if (settings.sound) playPing();
+    });
+
+    settingsOverlay.querySelectorAll('.colors button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        settings.accent = btn.dataset.color;
+        localStorage.setItem('chat_accent', settings.accent);
+        document.documentElement.style.setProperty('--accent', settings.accent);
+        settingsOverlay.querySelectorAll('.colors button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    });
+  }
+
+  function closeSettings() {
+    if (settingsOverlay) {
+      settingsOverlay.remove();
+      settingsOverlay = null;
+    }
+  }
+</script>
+
+</body>
+</html>
